@@ -1,5 +1,5 @@
 /*----------------------------------------------------------------------------*/
-/* Copyright (c) 2017-2019 FIRST. All Rights Reserved.                        */
+/* Copyright (c) 2017-2018 FIRST. All Rights Reserved.                        */
 /* Open Source Software - may be modified and shared by FRC teams. The code   */
 /* must be accompanied by the FIRST BSD license file in the root directory of */
 /* the project.                                                               */
@@ -7,70 +7,155 @@
 
 package frc.robot;
 
+import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.wpilibj.TimedRobot;
-import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.CommandScheduler;
+import edu.wpi.first.wpilibj.command.Command;
+import edu.wpi.first.wpilibj.command.Scheduler;
+import edu.wpi.cscore.UsbCamera;
+import edu.wpi.first.wpilibj.command.Subsystem;
+import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import frc.robot.commands.DoNothing;
+import frc.robot.commands.DriveMotor;
+import frc.robot.commands.DriveTo;
+import frc.robot.commands.DriverOperated;
+import frc.robot.commands.Rotate;
+import frc.robot.subsystems.DigitalSignalSubsystem;
+import frc.robot.subsystems.DriveTrainSubsystem;
+import edu.wpi.first.wpilibj.Servo;
+import frc.robot.Bot;
+import frc.robot.Bots;
 
 /**
- * The VM is configured to automatically run this class, and to call the functions corresponding to
- * each mode, as described in the TimedRobot documentation. If you change the name of this class or
- * the package after creating this project, you must also update the build.gradle file in the
+ * The VM is configured to automatically run this class, and to call the
+ * functions corresponding to each mode, as described in the TimedRobot
+ * documentation. If you change the name of this class or the package after
+ * creating this project, you must also update the build.gradle file in the
  * project.
  */
 public class Robot extends TimedRobot {
-  private Command m_autonomousCommand;
 
-  private RobotContainer m_robotContainer;
+  Bot robot = Bots.createCompetitionBot();
 
+  public static OI m_oi;
+
+
+  Command teleop = new DriverOperated(robot);
+
+  Command m_autonomousCommand;
+  SendableChooser<Command> m_chooser = new SendableChooser<>();
+
+  DriveTrainSubsystem drivetrain;
+
+
+  //TEMPORARY
+  DigitalSignalSubsystem limiter;
   /**
-   * This function is run when the robot is first started up and should be used for any
-   * initialization code.
+   * This function is run when the robot is first started up and should be
+   * used for any initialization code.
    */
   @Override
   public void robotInit() {
-    // Instantiate our RobotContainer.  This will perform all our button bindings, and put our
-    // autonomous chooser on the dashboard.
-    m_robotContainer = new RobotContainer();
+    m_oi = new OI();
+    m_chooser.setDefaultOption("Default Auto - Teleop", new DriverOperated(robot));
+    m_chooser.addOption("do nothing", new DoNothing());
+    m_chooser.addOption("suck for 5 sec", new DriveMotor(robot, Bot.SUCK, 1.0, 5));
+    m_chooser.addOption("Drive forward 5 feet", new DriveTo(robot, 5, .5, 0, 3));
+    m_chooser.addOption("Rotate", new Rotate(robot, 720, 0.3, 15));
+    SmartDashboard.putData("Auto mode", m_chooser);
+    try {
+      this.drivetrain = (DriveTrainSubsystem) this.robot.getSubsystem(Bot.DRIVETRAIN);
+    } catch (Exception e) {
+      
+    }
+
+    try {
+      this.limiter = (DigitalSignalSubsystem) this.robot.getSubsystem(Bot.ACTUATOR_LIMITER);
+    } catch( Exception e) {
+
+    }
+
+    try{
+      UsbCamera camera = CameraServer.getInstance().startAutomaticCapture();
+      UsbCamera backCamera = CameraServer.getInstance().startAutomaticCapture();
+      camera.setResolution(256, 144);
+      backCamera.setResolution(256, 144);
+      System.out.println("Camera should be happy");
+    }catch(Exception e){
+      e.printStackTrace();
+    }
   }
 
   /**
-   * This function is called every robot packet, no matter the mode. Use this for items like
-   * diagnostics that you want ran during disabled, autonomous, teleoperated and test.
+   * This function is called every robot packet, no matter the mode. Use
+   * this for items like diagnostics that you want ran during disabled,
+   * autonomous, teleoperated and test.
    *
    * <p>This runs after the mode specific periodic functions, but before
    * LiveWindow and SmartDashboard integrated updating.
    */
   @Override
   public void robotPeriodic() {
-    // Runs the Scheduler.  This is responsible for polling buttons, adding newly-scheduled
-    // commands, running already-scheduled commands, removing finished or interrupted commands,
-    // and running subsystem periodic() methods.  This must be called from the robot's periodic
-    // block in order for anything in the Command-based framework to work.
-    CommandScheduler.getInstance().run();
+    if(this.drivetrain != null){
+      this.drivetrain.putEncodersOnDash();
+      this.drivetrain.putCompassOnDash();
+      this.drivetrain.putUltrasonicOnDash();
+      this.drivetrain.putServoOnDash();
+    }
+    // if(this.limiter != null){
+    //   if(this.limiter.getDigitalSignal()) {
+    //     System.out.println("STOP ACTUATOR!!!");
+    //   } else {
+    //     System.out.println("actuator ok");
+    //   }
+    // }
+
   }
 
   /**
    * This function is called once each time the robot enters Disabled mode.
+   * You can use it to reset any subsystem information you want to clear when
+   * the robot is disabled.
    */
   @Override
   public void disabledInit() {
+		teleop.cancel();
   }
 
   @Override
   public void disabledPeriodic() {
+    Scheduler.getInstance().run();
   }
 
   /**
-   * This autonomous runs the autonomous command selected by your {@link RobotContainer} class.
+   * This autonomous (along with the chooser code above) shows how to select
+   * between different autonomous modes using the dashboard. The sendable
+   * chooser code works with the Java SmartDashboard. If you prefer the
+   * LabVIEW Dashboard, remove all of the chooser code and uncomment the
+   * getString code to get the auto name from the text box below the Gyro
+   *
+   * <p>You can add additional auto modes by adding additional commands to the
+   * chooser code above (like the commented example) or additional comparisons
+   * to the switch structure below with additional strings & commands.
    */
   @Override
   public void autonomousInit() {
-    m_autonomousCommand = m_robotContainer.getAutonomousCommand();
+		teleop.cancel();
+    m_autonomousCommand = m_chooser.getSelected();
+    try{
+    ((DriveTrainSubsystem)robot.getSubsystem(Bot.DRIVETRAIN)).resetCompass();
+    }catch(Exception E){System.out.println("Could not reset compass");} /*
+     * String autoSelected = SmartDashboard.getString("Auto Selector",
+     * "Default"); switch(autoSelected) { case "My Auto": autonomousCommand
+     * = new MyAutoCommand(); break; case "Default Auto": default:
+     * autonomousCommand = new ExampleCommand(); break; }
+     */
 
     // schedule the autonomous command (example)
     if (m_autonomousCommand != null) {
-      m_autonomousCommand.schedule();
+      m_autonomousCommand.start();
     }
+    drivetrain.resetCompass();
   }
 
   /**
@@ -78,8 +163,9 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void autonomousPeriodic() {
+    Scheduler.getInstance().run();
   }
-
+  
   @Override
   public void teleopInit() {
     // This makes sure that the autonomous stops running when
@@ -89,6 +175,8 @@ public class Robot extends TimedRobot {
     if (m_autonomousCommand != null) {
       m_autonomousCommand.cancel();
     }
+
+		teleop.start();
   }
 
   /**
@@ -96,12 +184,8 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void teleopPeriodic() {
-  }
-
-  @Override
-  public void testInit() {
-    // Cancels all running commands at the start of test mode.
-    CommandScheduler.getInstance().cancelAll();
+    this.drivetrain.putServoOnDash();
+    Scheduler.getInstance().run();
   }
 
   /**
